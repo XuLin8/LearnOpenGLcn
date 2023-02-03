@@ -1,10 +1,15 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "vendor/stb_image/stb_image.h"
-#include "Shader_s.h"
+#include <stb_image/stb_image.h>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
+
+#include "Shader_s.h"
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -156,11 +161,16 @@ int main()
     // uncomment this call to draw in wireframe polygons.
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     
-    ourShader.use();
+    ourShader.use();//设置uniform 参数前需要调用着色器
+    // 设置纹理
     glUniform1i(glGetUniformLocation(ourShader.ID, "texture1"), 0);//手动设置
     ourShader.setInt("texture2", 1);//或者使用着色器类设置
-
-    
+    // 设置位移矩阵
+    /*glm::mat4 trans;
+    trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(0.0, 0.0, 1.0));
+    trans = glm::scale(trans, glm::vec3(0.5, 0.5, 0.5));
+    unsigned int transformLoc = glGetUniformLocation(ourShader.ID, "transform");
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));*/
 
     //渲染循环(Render Loop)
     while (!glfwWindowShouldClose(window))//每次循环的开始前检查一次GLFW是否被要求退出
@@ -183,9 +193,16 @@ int main()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
 
+        // 变换矩阵
+        glm::mat4 trans;
+        trans = glm::translate(trans, glm::vec3(0.5f, -0.5f, 0.0f));
+        trans = glm::rotate(trans, (float)glfwGetTime(), glm::vec3(0.0f, 0.0f, 1.0f));
+        unsigned int transformLoc = glGetUniformLocation(ourShader.ID, "transform");
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
+
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
+        
         // 检查并调用事件，交换缓冲
         glfwPollEvents();//检查有没有触发什么事件、更新窗口状态，并调用对应的回调函数
         glfwSwapBuffers(window);//交换颜色缓冲
