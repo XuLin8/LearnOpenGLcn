@@ -66,12 +66,20 @@ int main()
     // 告诉 stb_image.h 翻转纹理的y轴 (在加载模型前).
     stbi_set_flip_vertically_on_load(true);
 
-    // z-Buffer启用
+    // 深度缓冲启用
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
+
+    // 模板缓冲启用
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);//告诉OpenGL，只要一个片段的模板值不等于(GL_NOTEQUAL)参考值1，片段将会通过测试并被绘制，否则会被丢弃。不过这句在这里没什么用，渲染循环里有重新定义
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);//告诉OpenGL,模板测试和深度测试都通过时,将模板值设置为glStencilFunc函数设置的ref值,也就是1
+
     // 配置顶点着色器，片段着色器，并链接到shaderProgram
-    Shader shader("res/Shaders/SeniorPartShaders/1.1.Depth_test.vs", 
-        "res/Shaders/SeniorPartShaders/1.1.Depth_test.fs");
+    Shader shader("res/Shaders/SeniorPartShaders/2.Stencil_test.vs", 
+        "res/Shaders/SeniorPartShaders/2.Stencil_test.fs");
+    Shader shaderSingleColor("res/Shaders/SeniorPartShaders/2.Stencil_test.vs",
+        "res/Shaders/SeniorPartShaders/2.Stencil_single_color.fs");
     // 载入模型
     float cubeVertices[] = {
         // positions          // texture Coords
@@ -177,14 +185,33 @@ int main()
         // 渲染
          // 清除颜色缓冲
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);//设置清空屏幕所用的颜色
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);//清除z-buffer
-
-        shader.use();
+         // 清除z-buffer 清除模板缓冲
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        // 设置uniform
+        shaderSingleColor.use();
         glm::mat4 model = glm::mat4(1.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        shaderSingleColor.setMat4("view", view);
+        shaderSingleColor.setMat4("projection", projection);
+
+        shader.use();
         shader.setMat4("view", view);
         shader.setMat4("projection", projection);
+
+        // draw floor as normal, but don't write the floor to the stencil buffer, we only care about the containers. We set its mask to 0x00 to not write to the stencil buffer.
+        glStencilMask(0x00);
+        // floor
+        glBindVertexArray(planeVAO);
+        glBindTexture(GL_TEXTURE_2D, floorTexture);
+        shader.setMat4("model", glm::mat4(1.0f));
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        // 1st. render pass, draw objects as normal, writing to the stencil buffer
+        // --------------------------------------------------------------------
+        glStencilFunc(GL_ALWAYS, 1, 0x00); //总是要更新 1 ,
+        glStencilMask(0xFF);//开启模板缓冲写入，绘制立方体部分，储存模板值为1
         // cubes
         glBindVertexArray(cubeVAO);
         glActiveTexture(GL_TEXTURE0);
@@ -196,12 +223,33 @@ int main()
         model = glm::translate(model, glm::vec3(2.0f, 0.0f, 0.0f));
         shader.setMat4("model", model);
         glDrawArrays(GL_TRIANGLES, 0, 36);
-        // floor
-        glBindVertexArray(planeVAO);
-        glBindTexture(GL_TEXTURE_2D, floorTexture);
-        shader.setMat4("model", glm::mat4(1.0f));
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // 2nd. render pass: now draw slightly scaled versions of the objects, this time disabling stencil writing.
+        // Because the stencil buffer is now filled with several 1s. The parts of the buffer that are 1 are not drawn, thus only drawing 
+        // the objects' size differences, making it look like borders.
+        // -----------------------------------------------------------------------------------------------------------------------------
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);//如果 GL_NOTEQUAL 1 则 0xFF
+        glStencilMask(0x00);//关闭模板缓冲写入，不更新模板缓冲值，线框绿立方体要画在模板值不等于1的地方
+        glDisable(GL_DEPTH_TEST);
+        shaderSingleColor.use();
+        float scale = 1.05f;
+        // cubes
+        glBindVertexArray(cubeVAO);
+        glBindTexture(GL_TEXTURE_2D, cubeTexture);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-1.0f, 0.0f, -1.0f));
+        model = glm::scale(model, glm::vec3(scale, scale, scale));
+        shaderSingleColor.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(2.0f, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(scale, scale, scale));
+        shaderSingleColor.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
+        glStencilMask(0xFF);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glEnable(GL_DEPTH_TEST);
 
         // 检查并调用事件，交换缓冲
         glfwPollEvents();//检查有没有触发什么事件、更新窗口状态，并调用对应的回调函数
