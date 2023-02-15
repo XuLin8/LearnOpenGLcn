@@ -69,6 +69,8 @@ int main()
 
     // 深度缓冲启用
     glEnable(GL_DEPTH_TEST);
+    // 启用修改顶点着色器修改点的大小
+    glEnable(GL_PROGRAM_POINT_SIZE);
 
     // 配置顶点着色器，片段着色器，并链接到shaderProgram
     Shader shader("res/Shaders/SeniorPartShaders/6.2.cubemaps.vs", 
@@ -76,6 +78,11 @@ int main()
 
     Shader skyboxShader("res/Shaders/SeniorPartShaders/6.2.skybox.vs",
         "res/Shaders/SeniorPartShaders/6.2.skybox.fs");
+
+    Shader shaderRed("res/Shaders/SeniorPartShaders/8.advanced_glsl.vs", "res/Shaders/SeniorPartShaders/8.red.fs");
+    Shader shaderGreen("res/Shaders/SeniorPartShaders/8.advanced_glsl.vs", "res/Shaders/SeniorPartShaders/8.green.fs");
+    Shader shaderBlue("res/Shaders/SeniorPartShaders/8.advanced_glsl.vs", "res/Shaders/SeniorPartShaders/8.blue.fs");
+    Shader shaderYellow("res/Shaders/SeniorPartShaders/8.advanced_glsl.vs", "res/Shaders/SeniorPartShaders/8.yellow.fs");
 
     // 载入模型
     float cubeVertices[] = {
@@ -168,7 +175,6 @@ int main()
          1.0f, -1.0f,  1.0f
     };
     // cube VAO
-   // cube VAO
     unsigned int cubeVAO, cubeVBO;
     glGenVertexArrays(1, &cubeVAO);
     glGenBuffers(1, &cubeVBO);
@@ -189,6 +195,33 @@ int main()
     glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+    // configure a uniform buffer object
+    // ---------------------------------
+    // first. We get the relevant block indices
+    unsigned int uniformBlockIndexRed = glGetUniformBlockIndex(shaderRed.ID, "Matrices");
+    unsigned int uniformBlockIndexGreen = glGetUniformBlockIndex(shaderGreen.ID, "Matrices");
+    unsigned int uniformBlockIndexBlue = glGetUniformBlockIndex(shaderBlue.ID, "Matrices");
+    unsigned int uniformBlockIndexYellow = glGetUniformBlockIndex(shaderYellow.ID, "Matrices");
+    // then we link each shader's uniform block to this uniform binding point
+    glUniformBlockBinding(shaderRed.ID, uniformBlockIndexRed, 0);
+    glUniformBlockBinding(shaderGreen.ID, uniformBlockIndexGreen, 0);
+    glUniformBlockBinding(shaderBlue.ID, uniformBlockIndexBlue, 0);
+    glUniformBlockBinding(shaderYellow.ID, uniformBlockIndexYellow, 0);
+    // Now actually create the buffer
+    unsigned int uboMatrices;
+    glGenBuffers(1, &uboMatrices);
+    glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // define the range of the buffer that links to a uniform binding point
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
+
+    // store the projection matrix (we only do this once now) (note: we're not using zoom anymore by changing the FoV)
+    glm::mat4 projection = glm::perspective(45.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+    glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     vector<std::string> faces
     {
@@ -231,6 +264,7 @@ int main()
         
         // 设置uniform
         glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -5.0f));
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
@@ -259,6 +293,38 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS); // set depth function back to default
+
+        // set the view and projection matrix in the uniform block - we only have to do this once per loop iteration.
+        view = camera.GetViewMatrix();
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // draw 4 cubes 
+       // RED
+        glBindVertexArray(cubeVAO);
+        shaderRed.use();
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-0.75f, 0.75f, 0.0f)); // move top-left
+        shaderRed.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        // GREEN
+        shaderGreen.use();
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.75f, 0.75f, 0.0f)); // move top-right
+        shaderGreen.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        // YELLOW
+        shaderYellow.use();
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-0.75f, -0.75f, 0.0f)); // move bottom-left
+        shaderYellow.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        // BLUE
+        shaderBlue.use();
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.75f, -0.75f, 0.0f)); // move bottom-right
+        shaderBlue.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // 检查并调用事件，交换缓冲
         glfwPollEvents();//检查有没有触发什么事件、更新窗口状态，并调用对应的回调函数
