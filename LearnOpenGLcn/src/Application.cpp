@@ -27,6 +27,7 @@ unsigned int loadCubemap(vector<std::string> faces);
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+float heightScale = 0.1f;
 // camera
 Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 float lastX = SCR_WIDTH / 2.0f;
@@ -91,9 +92,9 @@ int main()
 
     // load textures
     // -------------
-    GLuint diffuseMap = loadTexture("res/textures/brickwall.jpg");
-    GLuint normalMap = loadTexture("res/textures/brickwall_normal.jpg");
-
+    unsigned int diffuseMap = loadTexture("res/textures/bricks2.jpg");
+    unsigned int normalMap = loadTexture("res/textures/bricks2_normal.jpg");
+    unsigned int heightMap = loadTexture("res/textures/bricks2_disp.jpg");
     // lighting info
     // -------------
     glm::vec3 lightPos(0.5f, 1.0f, 0.3f);
@@ -104,6 +105,7 @@ int main()
     shader.use();
     shader.setInt("diffuseMap", 0);
     shader.setInt("normalMap", 1);
+    shader.setInt("depthMap", 2);
 
     // »­Ïß¿ò
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -128,17 +130,20 @@ int main()
         shader.use();
         shader.setMat4("projection", projection);
         shader.setMat4("view", view);
-
-        // render normal-mapped quad
+        // render parallax-mapped quad
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::rotate(model, glm::radians((float)glfwGetTime() * -10.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // rotate the quad to show normal mapping from multiple directions
+        model = glm::rotate(model, glm::radians((float)glfwGetTime() * -10.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // rotate the quad to show parallax mapping from multiple directions
         shader.setMat4("model", model);
         shader.setVec3("viewPos", camera.Position);
         shader.setVec3("lightPos", lightPos);
+        shader.setFloat("heightScale", heightScale); // adjust with Q and E keys
+        std::cout << heightScale << std::endl;
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, diffuseMap);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, normalMap);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, heightMap);
         renderQuad();
 
         // render light source (simply re-renders a smaller plane at the light's position for debugging/visualization)
@@ -304,10 +309,12 @@ void renderQuad()
         tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
         tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
         tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+        tangent1 = glm::normalize(tangent1);
 
         bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
         bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
         bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+        bitangent1 = glm::normalize(bitangent1);
 
         // triangle 2
         // ----------
@@ -321,11 +328,13 @@ void renderQuad()
         tangent2.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
         tangent2.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
         tangent2.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+        tangent2 = glm::normalize(tangent2);
 
 
         bitangent2.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
         bitangent2.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
         bitangent2.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+        bitangent2 = glm::normalize(bitangent2);
 
 
         float quadVertices[] = {
@@ -381,25 +390,19 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
 
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     {
-        shadows = !shadows;
-        shadowsKeyPressed = true;
+        if (heightScale > 0.0f)
+            heightScale -= 0.0005f;
+        else
+            heightScale = 0.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
+    else if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
     {
-        shadowsKeyPressed = false;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS && !shadowsMapKeyPressed)
-    {
-        shadowsMap = !shadowsMap;
-        shadowsMapKeyPressed = true;
-      
-    }
-    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_RELEASE)
-    {
-        shadowsMapKeyPressed = false;
+        if (heightScale < 1.0f)
+            heightScale += 0.0005f;
+        else
+            heightScale = 1.0f;
     }
 }
 
